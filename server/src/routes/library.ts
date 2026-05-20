@@ -178,7 +178,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const result = await pool.query(
       `select id, name, created_at
        from library_seat_types
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by name asc`,
+      [auth.user.branchId],
     );
 
     return reply.send(result.rows);
@@ -196,10 +198,10 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const pool = getPool();
     const name = parsed.data.name.trim();
     const result = await pool.query(
-      `insert into library_seat_types (name)
-       values ($1)
+      `insert into library_seat_types (name, branch_id)
+       values ($1, $2::uuid)
        returning id, name, created_at`,
-      [name],
+      [name, auth.user.branchId],
     );
 
     return reply.code(201).send(result.rows[0]);
@@ -213,7 +215,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const result = await pool.query(
       `select id, name, created_at
        from library_halls
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by name asc`,
+      [auth.user.branchId],
     );
 
     return reply.send(result.rows);
@@ -232,10 +236,10 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const { name } = parsed.data;
 
     const result = await pool.query(
-      `insert into library_halls (name)
-       values ($1)
+      `insert into library_halls (name, branch_id)
+       values ($1, $2::uuid)
        returning id, name, created_at`,
-      [name],
+      [name, auth.user.branchId],
     );
 
     return reply.code(201).send(result.rows[0]);
@@ -259,8 +263,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
        set name = coalesce($2, name),
            updated_at = now()
        where id = $1
+         and ($3::uuid is null or branch_id = $3::uuid)
        returning id, name, created_at, updated_at`,
-      [id, name ?? null],
+      [id, name ?? null, auth.user.branchId],
     );
 
     const row = res.rows[0];
@@ -298,7 +303,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
           '[]'::json
         ) as pricing
       from library_shifts s
+      where ($1::uuid is null or s.branch_id = $1::uuid)
       order by s.start_time asc, s.name asc`,
+      [auth.user.branchId],
     );
     return reply.send(result.rows);
   });
@@ -319,10 +326,10 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     try {
       await client.query("begin");
       const shiftRes = await client.query(
-        `insert into library_shifts (name, start_time, end_time, monthly_fee)
-         values ($1, $2, $3, $4)
+        `insert into library_shifts (name, start_time, end_time, monthly_fee, branch_id)
+         values ($1, $2, $3, $4, $5::uuid)
          returning id, name, start_time::text as start_time, end_time::text as end_time, monthly_fee, created_at`,
-        [name, start_time, end_time, monthly_fee ?? null],
+        [name, start_time, end_time, monthly_fee ?? null, auth.user.branchId],
       );
       const shift = shiftRes.rows[0] as { id: string } | undefined;
       if (!shift) throw new Error("Failed to create shift");
@@ -364,8 +371,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
             '[]'::json
           ) as pricing
          from library_shifts s
-         where s.id = $1`,
-        [shift.id],
+         where s.id = $1
+           and ($2::uuid is null or s.branch_id = $2::uuid)`,
+        [shift.id, auth.user.branchId],
       );
 
       await client.query("commit");
@@ -400,8 +408,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
           `update library_shifts
            set monthly_fee = $2,
                updated_at = now()
-           where id = $1`,
-          [id, monthly_fee],
+           where id = $1
+             and ($3::uuid is null or branch_id = $3::uuid)`,
+          [id, monthly_fee, auth.user.branchId],
         );
       }
 
@@ -443,8 +452,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
             '[]'::json
           ) as pricing
         from library_shifts s
-        where s.id = $1`,
-        [id],
+        where s.id = $1
+          and ($2::uuid is null or s.branch_id = $2::uuid)`,
+        [id, auth.user.branchId],
       );
 
       await client.query("commit");
@@ -547,7 +557,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
         left join library_halls h on h.id = s.hall_id
         left join library_seat_types t on t.id = s.seat_type_id
         left join students st on st.id = s.occupant_student_id
+        where ($1::uuid is null or s.branch_id = $1::uuid)
         order by s.seat_number asc`,
+        [auth.user.branchId],
       );
       return reply.send(result.rows);
     }
@@ -558,6 +570,7 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
         select id, start_time::text as start_time, end_time::text as end_time
         from library_shifts
         where id = $1
+          and ($2::uuid is null or branch_id = $2::uuid)
       ),
       reserved as (
         select distinct on (m.reserved_seat_id)
@@ -619,8 +632,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
       left join library_seat_types t on t.id = s.seat_type_id
       left join active_checkins ac on ac.seat_id = s.id
       left join reserved r on r.seat_id = s.id
+      where ($2::uuid is null or s.branch_id = $2::uuid)
       order by s.seat_number asc`,
-      [shift_id],
+      [shift_id, auth.user.branchId],
     );
 
     return reply.send(result.rows);
@@ -644,27 +658,28 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     if (!resolvedHallId && hallName) {
       // Resolve/create hall by name (keeps older clients working)
       await pool.query(
-        `insert into library_halls (name)
-         values ($1)
+        `insert into library_halls (name, branch_id)
+         values ($1, $2::uuid)
          on conflict (name) do nothing`,
-        [hallName],
+        [hallName, auth.user.branchId],
       );
 
       const hallRes = await pool.query(
         `select id
          from library_halls
          where name = $1
+           and ($2::uuid is null or branch_id = $2::uuid)
          limit 1`,
-        [hallName],
+        [hallName, auth.user.branchId],
       );
       resolvedHallId = (hallRes.rows[0]?.id as string | undefined) ?? null;
     }
 
     const result = await pool.query(
-      `insert into library_seats (seat_number, hall_id, hall, seat_type_id)
-       values ($1, $2, $3, $4)
+      `insert into library_seats (seat_number, hall_id, hall, seat_type_id, branch_id)
+       values ($1, $2, $3, $4, $5::uuid)
        returning id, seat_number, hall_id, hall, seat_type_id, status, occupied_until`,
-      [seat_number, resolvedHallId, hallName || null, seat_type_id ?? null],
+      [seat_number, resolvedHallId, hallName || null, seat_type_id ?? null, auth.user.branchId],
     );
 
     return reply.code(201).send(result.rows[0]);
@@ -1062,8 +1077,10 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const res = await pool.query(
       `select total_lockers, monthly_fee, updated_at
        from library_locker_settings
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by created_at asc
        limit 1`,
+      [auth.user.branchId],
     );
 
     const row = res.rows[0] as
@@ -1101,17 +1118,18 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
        set total_lockers = $1,
            monthly_fee = $2,
            updated_at = now()
+       where ($3::uuid is null or branch_id = $3::uuid)
        returning total_lockers, monthly_fee, updated_at`,
-      [total_lockers, monthly_fee],
+      [total_lockers, monthly_fee, auth.user.branchId],
     );
 
     if (updateRes.rows[0]) return reply.send(updateRes.rows[0]);
 
     const insertRes = await pool.query(
-      `insert into library_locker_settings (total_lockers, monthly_fee)
-       values ($1, $2)
+      `insert into library_locker_settings (total_lockers, monthly_fee, branch_id)
+       values ($1, $2, $3::uuid)
        returning total_lockers, monthly_fee, updated_at`,
-      [total_lockers, monthly_fee],
+      [total_lockers, monthly_fee, auth.user.branchId],
     );
     return reply.send(insertRes.rows[0]);
   });
@@ -1125,8 +1143,10 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const settingsRes = await pool.query(
       `select total_lockers
        from library_locker_settings
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by created_at asc
        limit 1`,
+      [auth.user.branchId],
     );
     const totalLockers = Number(settingsRes.rows[0]?.total_lockers ?? 0);
     if (!Number.isFinite(totalLockers) || totalLockers <= 0) return reply.send([]);
@@ -1192,7 +1212,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const res = await pool.query(
       `select id, name
        from library_book_sections
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by name asc`,
+      [auth.user.branchId],
     );
     return reply.send(res.rows);
   });
@@ -1209,12 +1231,12 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `insert into library_book_sections (name)
-         values ($1)
+        `insert into library_book_sections (name, branch_id)
+         values ($1, $2::uuid)
          on conflict (name)
          do update set name = excluded.name
          returning id, name`,
-        [parsed.data.name],
+        [parsed.data.name, auth.user.branchId],
       );
       return reply.code(201).send(res.rows[0]);
     } catch (err: unknown) {
@@ -1261,9 +1283,9 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
       from library_books b
       join library_book_sections s on s.id = b.section_id
       left join active_issue ai on ai.book_id = b.id
-      ${where}
+      ${where ? `${where} and ($2::uuid is null or b.branch_id = $2::uuid)` : `where ($1::uuid is null or b.branch_id = $1::uuid)`}
       order by b.unique_number asc, b.created_at desc`,
-      params,
+      section_id ? [...params, auth.user.branchId] : [auth.user.branchId],
     );
 
     return reply.send(res.rows);
@@ -1281,14 +1303,15 @@ export async function registerLibraryRoutes(app: FastifyInstance) {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `insert into library_books (section_id, title, unique_number, thumbnail_url)
-         values ($1::uuid, $2, $3, $4)
+        `insert into library_books (section_id, title, unique_number, thumbnail_url, branch_id)
+         values ($1::uuid, $2, $3, $4, $5::uuid)
          returning id, section_id, title, unique_number, thumbnail_url`,
         [
           parsed.data.section_id,
           parsed.data.title,
           parsed.data.unique_number,
           parsed.data.thumbnail_url ?? null,
+          auth.user.branchId,
         ],
       );
       return reply.code(201).send(res.rows[0]);

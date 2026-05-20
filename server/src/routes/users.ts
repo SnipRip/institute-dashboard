@@ -1,13 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getPool } from "../db/pool.js";
-import { requireAuth } from "../middleware/auth.js";
+import { hasPermission, requireAuth } from "../middleware/auth.js";
 
 const UserDocSchema = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
   size: z.number().int().nonnegative(),
   lastModified: z.number().int().nonnegative(),
+});
+
+const BranchAccessSchema = z.object({
+  branch_id: z.string().uuid(),
+  role_id: z.string().uuid(),
+  is_active: z.boolean().optional().default(true),
 });
 
 const CreateUserSchema = z.object({
@@ -25,6 +31,7 @@ const CreateUserSchema = z.object({
   pan: z.string().trim().max(50).optional().nullable(),
   aadhar: z.string().trim().max(50).optional().nullable(),
   documents: z.array(UserDocSchema).optional().nullable(),
+  branch_access: z.array(BranchAccessSchema).optional().default([]),
 });
 
 const UpdateUserSchema = z.object({
@@ -42,6 +49,7 @@ const UpdateUserSchema = z.object({
   pan: z.string().trim().max(50).optional().nullable(),
   aadhar: z.string().trim().max(50).optional().nullable(),
   documents: z.array(UserDocSchema).optional().nullable(),
+  branch_access: z.array(BranchAccessSchema).optional(),
 });
 
 function isUniqueViolation(err: unknown) {
@@ -54,7 +62,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const auth = await requireAuth(req);
     if (!auth.ok) return reply.code(auth.status).send({ message: "Unauthorized" });
 
-    if (auth.user.role !== "admin" && auth.user.role !== "owner") {
+    if (!hasPermission(auth.user, "users.view")) {
       return reply.code(403).send({ message: "Forbidden" });
     }
 
@@ -81,6 +89,32 @@ export async function registerUserRoutes(app: FastifyInstance) {
        order by created_at desc`,
     );
 
+    const accessRes = await pool.query(
+      `select
+         uba.user_id,
+         uba.branch_id,
+         b.name as branch_name,
+         uba.role_id,
+         r.name as role_name,
+         uba.is_active
+       from user_branch_access uba
+       join branches b on b.id = uba.branch_id
+       join roles r on r.id = uba.role_id
+       order by b.name asc`,
+    );
+    const accessByUser = new Map<string, any[]>();
+    for (const a of accessRes.rows) {
+      const list = accessByUser.get(String(a.user_id)) ?? [];
+      list.push({
+        branch_id: String(a.branch_id),
+        branch_name: a.branch_name ?? "",
+        role_id: String(a.role_id),
+        role_name: a.role_name ?? "",
+        is_active: Boolean(a.is_active),
+      });
+      accessByUser.set(String(a.user_id), list);
+    }
+
     return reply.send(
       res.rows.map((r) => ({
         id: String(r.id),
@@ -98,6 +132,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
         pan: r.pan ?? "",
         aadhar: r.aadhar ?? "",
         documents: r.documents ?? [],
+        branch_access: accessByUser.get(String(r.id)) ?? [],
       })),
     );
   });
@@ -106,7 +141,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const auth = await requireAuth(req);
     if (!auth.ok) return reply.code(auth.status).send({ message: "Unauthorized" });
 
-    if (auth.user.role !== "admin" && auth.user.role !== "owner") {
+    if (!hasPermission(auth.user, "users.manage")) {
       return reply.code(403).send({ message: "Forbidden" });
     }
 
@@ -119,7 +154,10 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const pool = getPool();
 
     try {
-      const res = await pool.query(
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const res = await client.query(
         `insert into users (
            username,
            email,
@@ -166,7 +204,35 @@ export async function registerUserRoutes(app: FastifyInstance) {
           data.aadhar ?? null,
           data.documents ?? null,
         ],
-      );
+        );
+
+        const userId = String(res.rows[0].id);
+        const accessRows = data.branch_access.length > 0 ? data.branch_access : [];
+        if (accessRows.length === 0) {
+          const defaultAccess = await client.query(
+            `select b.id as branch_id, r.id as role_id
+             from branches b
+             cross join roles r
+             where b.is_active = true
+               and r.name = $1
+             order by b.is_default desc, b.created_at asc
+             limit 1`,
+            [data.role],
+          );
+          if (defaultAccess.rows[0]) accessRows.push(defaultAccess.rows[0]);
+        }
+
+        for (const access of accessRows) {
+          await client.query(
+            `insert into user_branch_access (user_id, branch_id, role_id, is_active)
+             values ($1, $2, $3, $4)
+             on conflict (user_id, branch_id)
+             do update set role_id = excluded.role_id, is_active = excluded.is_active, updated_at = now()`,
+            [userId, access.branch_id, access.role_id, access.is_active ?? true],
+          );
+        }
+
+        await client.query("commit");
 
       const row = res.rows[0] as any;
       return reply.code(201).send({
@@ -176,6 +242,12 @@ export async function registerUserRoutes(app: FastifyInstance) {
         role: row.role,
         created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
       });
+      } catch (err) {
+        await client.query("rollback");
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (err) {
       if (isUniqueViolation(err)) {
         return reply.code(409).send({ message: "User already exists" });
@@ -189,7 +261,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const auth = await requireAuth(req);
     if (!auth.ok) return reply.code(auth.status).send({ message: "Unauthorized" });
 
-    if (auth.user.role !== "admin" && auth.user.role !== "owner") {
+    if (!hasPermission(auth.user, "users.manage")) {
       return reply.code(403).send({ message: "Forbidden" });
     }
 
@@ -233,7 +305,10 @@ export async function registerUserRoutes(app: FastifyInstance) {
     }
 
     try {
-      const res = await pool.query(
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const res = await client.query(
         `update users
          set
            username = $2,
@@ -272,7 +347,25 @@ export async function registerUserRoutes(app: FastifyInstance) {
       );
 
       const row = res.rows[0] as any;
-      if (!row) return reply.code(404).send({ message: "User not found" });
+      if (!row) {
+        await client.query("rollback");
+        return reply.code(404).send({ message: "User not found" });
+      }
+
+      if (data.branch_access !== undefined) {
+        await client.query(`delete from user_branch_access where user_id = $1`, [userId]);
+        for (const access of data.branch_access) {
+          await client.query(
+            `insert into user_branch_access (user_id, branch_id, role_id, is_active)
+             values ($1, $2, $3, $4)
+             on conflict (user_id, branch_id)
+             do update set role_id = excluded.role_id, is_active = excluded.is_active, updated_at = now()`,
+            [userId, access.branch_id, access.role_id, access.is_active],
+          );
+        }
+      }
+
+      await client.query("commit");
 
       return reply.send({
         id: String(row.id),
@@ -283,6 +376,12 @@ export async function registerUserRoutes(app: FastifyInstance) {
         created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
         updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
       });
+      } catch (err) {
+        await client.query("rollback");
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (err) {
       if (isUniqueViolation(err)) {
         return reply.code(409).send({ message: "Username or email already exists" });
@@ -296,7 +395,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const auth = await requireAuth(req);
     if (!auth.ok) return reply.code(auth.status).send({ message: "Unauthorized" });
 
-    if (auth.user.role !== "admin" && auth.user.role !== "owner") {
+    if (!hasPermission(auth.user, "users.manage")) {
       return reply.code(403).send({ message: "Forbidden" });
     }
 

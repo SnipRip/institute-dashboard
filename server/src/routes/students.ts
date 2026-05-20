@@ -94,7 +94,9 @@ export async function registerStudentRoutes(app: FastifyInstance) {
     const result = await pool.query(
       `select id, full_name, phone, admission_type, status, created_at
        from students
+       where ($1::uuid is null or branch_id = $1::uuid)
        order by created_at desc`,
+      [auth.user.branchId],
     );
     return reply.send(result.rows);
   });
@@ -111,8 +113,9 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       `select id, full_name, phone
        from students
        where id = $1
+         and ($2::uuid is null or branch_id = $2::uuid)
        limit 1`,
-      [id],
+      [id, auth.user.branchId],
     );
     const student = studentRes.rows[0] as { id: string; full_name: string; phone: string } | undefined;
     if (!student) return reply.code(404).send({ message: "Student not found" });
@@ -318,6 +321,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
             full_name,
             phone,
             account_master_id,
+            branch_id,
             alternate_phone,
             aadhar,
             guardian_name,
@@ -325,12 +329,13 @@ export async function registerStudentRoutes(app: FastifyInstance) {
             admission_type,
             status
           )
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         values ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10)
          returning id, full_name, phone, admission_type, status, created_at`,
         [
           full_name,
           phone,
           account_master_id,
+          auth.user.branchId,
           alternate_phone ?? null,
           aadhar ?? null,
           guardian_name ?? null,
@@ -345,9 +350,10 @@ export async function registerStudentRoutes(app: FastifyInstance) {
         await client.query(
           `update account_master
            set entity_id = $2,
+               branch_id = $3::uuid,
                updated_at = now()
            where id = $1`,
-          [account_master_id, studentId],
+          [account_master_id, studentId, auth.user.branchId],
         );
 
         if (class_ids && class_ids.length > 0) {

@@ -11,6 +11,8 @@ import { brandConfig } from "@/lib/config";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; role: string; isDefault?: boolean }>>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +45,17 @@ export default function LoginPage() {
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, branchId: branchId || undefined }),
       });
 
       const body = await res.json();
       if (!res.ok) throw new Error(body.message || "Login failed");
+      if (body.requiresBranchSelection && Array.isArray(body.branches)) {
+        setBranches(body.branches);
+        const defaultBranch = body.branches.find((b: { isDefault?: boolean }) => b.isDefault) || body.branches[0];
+        setBranchId(defaultBranch?.id || "");
+        return;
+      }
       setAuthToken(body.token);
       router.push("/");
     } catch (err: unknown) {
@@ -117,10 +125,28 @@ export default function LoginPage() {
               </div>
             </label>
 
+            {branches.length > 1 ? (
+              <label className={styles.label}>
+                Branch
+                <select
+                  className={styles.input}
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  required
+                >
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name} ({branch.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
             {error && <div className={styles.error}>{error}</div>}
 
             <button type="submit" className={styles.button} disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? "Signing in..." : branches.length > 1 ? "Continue to branch" : "Sign in"}
             </button>
 
             <div className={styles.rowBetween}>

@@ -1615,6 +1615,8 @@ export function EditClassBannerModal({
 interface AddUserModalProps {
     isOpen: boolean;
     onClose: () => void;
+    branches?: Array<{ id: string; name: string }>;
+    roles?: Array<{ id: string; name: string }>;
     onCreate: (payload: {
         username: string;
         email: string;
@@ -1629,10 +1631,11 @@ interface AddUserModalProps {
         aadhar: string;
         documents: Array<{ name: string; type: string; size: number; lastModified: number }>;
         role: string;
+        branch_access?: Array<{ branch_id: string; role_id: string; is_active: boolean }>;
     }) => void;
 }
 
-export function AddUserModal({ isOpen, onClose, onCreate }: AddUserModalProps) {
+export function AddUserModal({ isOpen, onClose, onCreate, branches = [], roles = [] }: AddUserModalProps) {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [defaultPassword, setDefaultPassword] = useState('');
@@ -1645,6 +1648,7 @@ export function AddUserModal({ isOpen, onClose, onCreate }: AddUserModalProps) {
     const [pan, setPan] = useState('');
     const [aadhar, setAadhar] = useState('');
     const [role, setRole] = useState('user');
+    const [branchAccess, setBranchAccess] = useState<Record<string, { enabled: boolean; role_id: string }>>({});
     const [files, setFiles] = useState<File[]>([]);
     const [fileInputKey, setFileInputKey] = useState(0);
 
@@ -1661,6 +1665,7 @@ export function AddUserModal({ isOpen, onClose, onCreate }: AddUserModalProps) {
         setPan('');
         setAadhar('');
         setRole('user');
+        setBranchAccess({});
         setFiles([]);
         setFileInputKey((k) => k + 1);
     };
@@ -1700,6 +1705,9 @@ export function AddUserModal({ isOpen, onClose, onCreate }: AddUserModalProps) {
                 lastModified: f.lastModified,
             })),
             role,
+            branch_access: Object.entries(branchAccess)
+                .filter(([, v]) => v.enabled && v.role_id)
+                .map(([branch_id, v]) => ({ branch_id, role_id: v.role_id, is_active: true })),
         });
 
         resetForm();
@@ -1866,6 +1874,41 @@ export function AddUserModal({ isOpen, onClose, onCreate }: AddUserModalProps) {
                     <option value="owner">owner</option>
                 </select>
             </div>
+
+            {branches.length > 0 && roles.length > 0 ? (
+                <div className={styles.inputGroup}>
+                    <label className={styles.label}>Branch Access</label>
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                        {branches.map((branch) => {
+                            const current = branchAccess[branch.id] || { enabled: false, role_id: roles.find((r) => r.name === role)?.id || roles[0]?.id || '' };
+                            return (
+                                <div key={branch.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 180px', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={current.enabled}
+                                        onChange={(e) => setBranchAccess((prev) => ({
+                                            ...prev,
+                                            [branch.id]: { ...current, enabled: e.target.checked },
+                                        }))}
+                                    />
+                                    <span>{branch.name}</span>
+                                    <select
+                                        className={styles.select}
+                                        value={current.role_id}
+                                        disabled={!current.enabled}
+                                        onChange={(e) => setBranchAccess((prev) => ({
+                                            ...prev,
+                                            [branch.id]: { ...current, role_id: e.target.value },
+                                        }))}
+                                    >
+                                        {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                    </select>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : null}
         </BaseModal>
     );
 }
@@ -1888,8 +1931,11 @@ interface EditUserModalProps {
         pan?: string;
         aadhar?: string;
         documents?: Array<{ name: string; type: string; size: number; lastModified: number }>;
+        branch_access?: Array<{ branch_id: string; role_id: string; is_active: boolean }>;
         created_at?: string;
     } | null;
+    branches?: Array<{ id: string; name: string }>;
+    roles?: Array<{ id: string; name: string }>;
     onSave: (payload: {
         id: string;
         username: string;
@@ -1905,6 +1951,7 @@ interface EditUserModalProps {
         pan: string;
         aadhar: string;
         documents: Array<{ name: string; type: string; size: number; lastModified: number }>;
+        branch_access?: Array<{ branch_id: string; role_id: string; is_active: boolean }>;
     }) => void;
     saving?: boolean;
     disableDeactivate?: boolean;
@@ -1932,6 +1979,8 @@ export function EditUserModal({
     disableDelete,
     disableDeleteReason,
     onDelete,
+    branches = [],
+    roles = [],
 }: EditUserModalProps) {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -1945,6 +1994,7 @@ export function EditUserModal({
     const [aadhar, setAadhar] = useState('');
     const [role, setRole] = useState('user');
     const [isActive, setIsActive] = useState(true);
+    const [branchAccess, setBranchAccess] = useState<Record<string, { enabled: boolean; role_id: string }>>({});
 
     useEffect(() => {
         if (!isOpen || !user) return;
@@ -1960,6 +2010,11 @@ export function EditUserModal({
         setAadhar(user.aadhar || '');
         setRole(user.role || 'user');
         setIsActive(user.is_active !== false);
+        const next: Record<string, { enabled: boolean; role_id: string }> = {};
+        for (const access of user.branch_access || []) {
+            next[access.branch_id] = { enabled: access.is_active !== false, role_id: access.role_id };
+        }
+        setBranchAccess(next);
     }, [isOpen, user]);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -1987,6 +2042,9 @@ export function EditUserModal({
             pan: pan.trim(),
             aadhar: aadhar.trim(),
             documents: Array.isArray(user.documents) ? user.documents : [],
+            branch_access: Object.entries(branchAccess)
+                .filter(([, v]) => v.enabled && v.role_id)
+                .map(([branch_id, v]) => ({ branch_id, role_id: v.role_id, is_active: true })),
         });
     };
 
@@ -2107,6 +2165,41 @@ export function EditUserModal({
                     <option value="owner">owner</option>
                 </select>
             </div>
+
+            {branches.length > 0 && roles.length > 0 ? (
+                <div className={styles.inputGroup}>
+                    <label className={styles.label}>Branch Access</label>
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                        {branches.map((branch) => {
+                            const current = branchAccess[branch.id] || { enabled: false, role_id: roles.find((r) => r.name === role)?.id || roles[0]?.id || '' };
+                            return (
+                                <div key={branch.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 180px', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={current.enabled}
+                                        onChange={(e) => setBranchAccess((prev) => ({
+                                            ...prev,
+                                            [branch.id]: { ...current, enabled: e.target.checked },
+                                        }))}
+                                    />
+                                    <span>{branch.name}</span>
+                                    <select
+                                        className={styles.select}
+                                        value={current.role_id}
+                                        disabled={!current.enabled}
+                                        onChange={(e) => setBranchAccess((prev) => ({
+                                            ...prev,
+                                            [branch.id]: { ...current, role_id: e.target.value },
+                                        }))}
+                                    >
+                                        {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                    </select>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : null}
 
             <div className={styles.inputGroup}>
                 <label className={styles.label}>Attachments</label>

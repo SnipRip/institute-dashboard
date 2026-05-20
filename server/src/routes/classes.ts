@@ -176,9 +176,11 @@ export async function registerClassRoutes(app: FastifyInstance) {
              where s.class_id = c.id
            ),
            '[]'::json
-         ) as schedule
+       ) as schedule
        from classes c
+       where ($1::uuid is null or c.branch_id = $1::uuid)
        order by c.created_at desc`,
+      [auth.user.branchId],
     );
     return reply.send(result.rows);
   });
@@ -219,8 +221,9 @@ export async function registerClassRoutes(app: FastifyInstance) {
          ) as schedule
        from classes c
        where c.id = $1
+         and ($2::uuid is null or c.branch_id = $2::uuid)
        limit 1`,
-      [id],
+      [id, auth.user.branchId],
     );
 
     const row = result.rows[0];
@@ -235,7 +238,7 @@ export async function registerClassRoutes(app: FastifyInstance) {
     const pool = getPool();
     const { id } = req.params as { id: string };
 
-    const existing = await pool.query(`select id from classes where id = $1 limit 1`, [id]);
+    const existing = await pool.query(`select id from classes where id = $1 and ($2::uuid is null or branch_id = $2::uuid) limit 1`, [id, auth.user.branchId]);
     if (!existing.rows[0]) return reply.code(404).send({ message: "Not found" });
 
     const result = await pool.query(
@@ -280,7 +283,7 @@ export async function registerClassRoutes(app: FastifyInstance) {
     }
 
     const pool = getPool();
-    const existing = await pool.query(`select id from classes where id = $1 limit 1`, [id]);
+    const existing = await pool.query(`select id from classes where id = $1 and ($2::uuid is null or branch_id = $2::uuid) limit 1`, [id, auth.user.branchId]);
     if (!existing.rows[0]) return reply.code(404).send({ message: "Not found" });
 
     const name = parsed.data.name.trim();
@@ -903,10 +906,10 @@ export async function registerClassRoutes(app: FastifyInstance) {
       await client.query("begin");
 
       const result = await client.query(
-        `insert into classes (name, monthly_fee, short_description, class_timing, status)
-         values ($1, $2, $3, $4, $5)
+        `insert into classes (name, monthly_fee, short_description, class_timing, status, branch_id)
+         values ($1, $2, $3, $4, $5, $6::uuid)
          returning id, name, monthly_fee, short_description, class_timing, thumbnail_url, banner_url, status, created_at, updated_at`,
-        [name, monthly_fee ?? 0, short_description ?? null, class_timing ?? null, status],
+        [name, monthly_fee ?? 0, short_description ?? null, class_timing ?? null, status, auth.user.branchId],
       );
 
       const created = result.rows[0] as { id: string };
@@ -964,8 +967,9 @@ export async function registerClassRoutes(app: FastifyInstance) {
            ) as schedule
          from classes c
          where c.id = $1
+           and ($2::uuid is null or c.branch_id = $2::uuid)
          limit 1`,
-        [created.id],
+        [created.id, auth.user.branchId],
       );
 
       return reply.code(201).send(reloaded.rows[0]);
@@ -988,7 +992,7 @@ export async function registerClassRoutes(app: FastifyInstance) {
     }
 
     const pool = getPool();
-    const existing = await pool.query(`select id from classes where id = $1 limit 1`, [id]);
+    const existing = await pool.query(`select id from classes where id = $1 and ($2::uuid is null or branch_id = $2::uuid) limit 1`, [id, auth.user.branchId]);
     if (!existing.rows[0]) return reply.code(404).send({ message: "Not found" });
 
     const data = parsed.data;
@@ -1097,7 +1101,7 @@ export async function registerClassRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const pool = getPool();
-    const existing = await pool.query(`select id from classes where id = $1 limit 1`, [id]);
+    const existing = await pool.query(`select id from classes where id = $1 and ($2::uuid is null or branch_id = $2::uuid) limit 1`, [id, auth.user.branchId]);
     if (!existing.rows[0]) return reply.code(404).send({ message: "Not found" });
 
     // Requires @fastify/multipart
@@ -1146,7 +1150,7 @@ export async function registerClassRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const pool = getPool();
-    const existing = await pool.query(`select id from classes where id = $1 limit 1`, [id]);
+    const existing = await pool.query(`select id from classes where id = $1 and ($2::uuid is null or branch_id = $2::uuid) limit 1`, [id, auth.user.branchId]);
     if (!existing.rows[0]) return reply.code(404).send({ message: "Not found" });
 
     const file = await (req as any).file();

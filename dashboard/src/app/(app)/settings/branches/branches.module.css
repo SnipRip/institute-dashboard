@@ -1,0 +1,376 @@
+.page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.25rem;
+  background: #f8fafc;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  color: #2563eb;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0.15rem 0 0;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  margin: 0.35rem 0 0;
+  max-width: 760px;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.stat {
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat span {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 1.1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-bottom: 1px solid #eef2f7;
+  background: linear-gradient(180deg, #fff 0%, #f9fafb 100%);
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+}
+
+.panelHint {
+  margin: 0.2rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  padding: 1rem 1rem 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 1rem;
+}
+
+.formGrid .field {
+  padding: 0;
+}
+
+.field span {
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 0.72rem 0.8rem;
+  color: var(--color-text-primary);
+  background: #fff;
+  outline: none;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.toggleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.toggleCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  background: #fff;
+}
+
+.toggleCardActive {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.toggleCard input {
+  margin-top: 0.2rem;
+}
+
+.toggleCard strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.toggleCard small {
+  display: block;
+  margin-top: 0.15rem;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0 1rem 1rem;
+  flex-wrap: wrap;
+}
+
+.btnPrimary,
+.btnOutline,
+.btnGhost {
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.95rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.btnPrimary {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--color-brand-primary);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.btnOutline,
+.btnGhost {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.btnGhost {
+  box-shadow: var(--shadow-sm);
+}
+
+.success,
+.error {
+  margin: 0 1rem 1rem;
+  border-radius: 0.75rem;
+  padding: 0.72rem 0.85rem;
+  font-size: 0.88rem;
+}
+
+.success {
+  border: 1px solid rgba(5, 150, 105, 0.22);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.error {
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.branchList {
+  display: flex;
+  flex-direction: column;
+}
+
+.branchRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #eef2f7;
+  padding: 0.95rem 1rem;
+  text-align: left;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.branchRow:hover,
+.branchRowActive {
+  background: #f8fbff;
+}
+
+.branchRow:last-child {
+  border-bottom: 0;
+}
+
+.branchMain {
+  min-width: 0;
+}
+
+.branchMain strong,
+.branchMain small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchMain strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.branchMain small {
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.branchMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.codePill,
+.badgeSuccess,
+.badgeMuted,
+.badgeInfo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 9999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.codePill {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.badgeSuccess {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badgeMuted {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.badgeInfo {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.emptyState {
+  margin: 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.85rem;
+  padding: 1.25rem;
+  color: #64748b;
+  text-align: center;
+}
+
+@media (max-width: 1080px) {
+  .layout,
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .header,
+  .branchRow {
+    grid-template-columns: 1fr;
+  }
+
+  .formGrid,
+  .toggleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    display: grid;
+  }
+
+  .branchMeta {
+    justify-content: flex-start;
+  }
+}

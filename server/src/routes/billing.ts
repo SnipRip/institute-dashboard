@@ -48,6 +48,7 @@ async function upsertInvoiceVoucherAndLines(opts: {
   subtotal: number;
   gstAmount: number;
   totalAmount: number;
+  branchId: string | null;
 }) {
   const narration = `${opts.billingCategory.toUpperCase()} Invoice`;
 
@@ -60,9 +61,10 @@ async function upsertInvoiceVoucherAndLines(opts: {
         party_name,
         narration,
         source_type,
-        source_id
+        source_id,
+        branch_id
       )
-     values ('Sales', $1, $2::date, $3::uuid, $4, $5, 'invoice', $6::uuid)
+     values ('Sales', $1, $2::date, $3::uuid, $4, $5, 'invoice', $6::uuid, $7::uuid)
      on conflict (source_type, source_id)
      do update set
        voucher_no = excluded.voucher_no,
@@ -70,6 +72,7 @@ async function upsertInvoiceVoucherAndLines(opts: {
        party_student_id = excluded.party_student_id,
        party_name = excluded.party_name,
        narration = excluded.narration,
+       branch_id = excluded.branch_id,
        updated_at = now()
      returning id`,
     [
@@ -79,6 +82,7 @@ async function upsertInvoiceVoucherAndLines(opts: {
       opts.customerName,
       narration,
       opts.invoiceId,
+      opts.branchId,
     ],
   );
 
@@ -139,6 +143,7 @@ async function findExistingStudentLibraryPeriodInvoice(opts: {
   studentId: string;
   periodStart: string;
   periodEnd: string;
+  branchId?: string | null;
   excludeId?: string;
 }) {
   const pool = getPool();
@@ -149,14 +154,15 @@ async function findExistingStudentLibraryPeriodInvoice(opts: {
        and billing_category = 'library'
        and status <> 'void'
        and period_start = $2::date
-       and period_end = $3::date` +
-    (opts.excludeId ? ` and id <> $4::uuid` : ``) +
+       and period_end = $3::date
+       and ($4::uuid is null or branch_id = $4::uuid)` +
+    (opts.excludeId ? ` and id <> $5::uuid` : ``) +
     `
      limit 1`;
 
   const args = opts.excludeId
-    ? [opts.studentId, opts.periodStart, opts.periodEnd, opts.excludeId]
-    : [opts.studentId, opts.periodStart, opts.periodEnd];
+    ? [opts.studentId, opts.periodStart, opts.periodEnd, opts.branchId ?? null, opts.excludeId]
+    : [opts.studentId, opts.periodStart, opts.periodEnd, opts.branchId ?? null];
   const res = await pool.query(baseSql, args);
   const row = res.rows[0] as { id: string } | undefined;
   return row?.id ?? null;
@@ -188,9 +194,10 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         status,
         created_at
        from billing_invoices
+       where ($3::uuid is null or branch_id = $3::uuid)
        order by invoice_date desc, created_at desc
        limit $1 offset $2`,
-      [parsed.data.limit, parsed.data.offset],
+      [parsed.data.limit, parsed.data.offset, auth.user.branchId],
     );
 
     return reply.send(
@@ -238,8 +245,9 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         updated_at
        from billing_invoices
        where id = $1
+         and ($2::uuid is null or branch_id = $2::uuid)
        limit 1`,
-      [paramsParsed.data.id],
+      [paramsParsed.data.id, auth.user.branchId],
     );
 
     const invoice = invoiceRes.rows[0] as
@@ -323,7 +331,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
     } = parsed.data;
 
     if (studentId && billingCategory === "library" && periodStart && periodEnd) {
-      const existingId = await findExistingStudentLibraryPeriodInvoice({ studentId, periodStart, periodEnd });
+      const existingId = await findExistingStudentLibraryPeriodInvoice({ studentId, periodStart, periodEnd, branchId: auth.user.branchId });
       if (existingId) {
         return reply
           .code(409)
@@ -354,9 +362,10 @@ export async function registerBillingRoutes(app: FastifyInstance) {
             subtotal_amount,
             gst_amount,
             total_amount,
-            status
+            status,
+            branch_id
           )
-         values ($1, $2::date, $3::uuid, $4, $5, $6, $7::date, $8::date, $9, $10, $11, $12, 'issued')
+         values ($1, $2::date, $3::uuid, $4, $5, $6, $7::date, $8::date, $9, $10, $11, $12, 'issued', $13::uuid)
          returning id, invoice_no, invoice_date, customer_name, total_amount, status, created_at`,
         [
           invoiceNo,
@@ -371,6 +380,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
           subtotal,
           gstAmount,
           totalAmount,
+          auth.user.branchId,
         ],
       );
 
@@ -403,6 +413,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         subtotal,
         gstAmount,
         totalAmount,
+        branchId: auth.user.branchId,
       });
 
       await client.query("commit");
@@ -460,6 +471,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         studentId,
         periodStart,
         periodEnd,
+        branchId: auth.user.branchId,
         excludeId: paramsParsed.data.id,
       });
       if (existingId) {
@@ -482,8 +494,9 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         `select id, invoice_no
          from billing_invoices
          where id = $1
+           and ($2::uuid is null or branch_id = $2::uuid)
          limit 1`,
-        [paramsParsed.data.id],
+        [paramsParsed.data.id, auth.user.branchId],
       );
       const existing = existingRes.rows[0] as { id: string; invoice_no: string } | undefined;
       if (!existing) {
@@ -543,6 +556,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         subtotal,
         gstAmount,
         totalAmount,
+        branchId: auth.user.branchId,
       });
 
       await client.query("commit");

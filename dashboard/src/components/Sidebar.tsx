@@ -105,6 +105,8 @@ function buildNavGroups(modules: BusinessModules): NavGroup[] {
       title: "Administration",
       items: [
         { href: "/settings/company", label: "Company Settings", icon: "settings" },
+        { href: "/settings/branches", label: "Branches", icon: "settings" },
+        { href: "/settings/roles", label: "Roles & Permissions", icon: "users" },
         modules.users ? { href: "/users", label: "Users", icon: "users" } : null,
       ].filter(Boolean) as NavItem[],
     },

@@ -21,6 +21,7 @@ type User = {
   pan?: string;
   aadhar?: string;
   documents?: Array<{ name: string; type: string; size: number; lastModified: number }>;
+  branch_access?: Array<{ branch_id: string; branch_name?: string; role_id: string; role_name?: string; is_active: boolean }>;
   role: string;
   is_active?: boolean;
   created_at: string;
@@ -38,6 +39,8 @@ export default function UsersPage() {
   const [meId, setMeId] = useState<string | null>(null);
   const [meRole, setMeRole] = useState<string | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
@@ -83,6 +86,25 @@ export default function UsersPage() {
     const body = (await res.json().catch(() => null)) as { id?: string; role?: string } | null;
     if (body?.id) setMeId(body.id);
     if (body?.role) setMeRole(body.role);
+  }
+
+  async function loadAccessOptions() {
+    const token = getAuthToken();
+    if (!token) return;
+    const [branchesRes, rolesRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/branches`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API_BASE_URL}/roles`, { headers: { Authorization: `Bearer ${token}` } }),
+    ]);
+    const branchesBody = await branchesRes.json().catch(() => ({}));
+    const rolesBody = await rolesRes.json().catch(() => ({}));
+    if (branchesRes.ok) {
+      const rows = Array.isArray(branchesBody.branches) ? branchesBody.branches : [];
+      setBranches(rows.map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })));
+    }
+    if (rolesRes.ok) {
+      const rows = Array.isArray(rolesBody.roles) ? rolesBody.roles : [];
+      setRoles(rows.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })));
+    }
   }
 
   async function deleteUser(userId: string) {
@@ -132,6 +154,7 @@ export default function UsersPage() {
     pan: string;
     aadhar: string;
     documents: Array<{ name: string; type: string; size: number; lastModified: number }>;
+    branch_access?: Array<{ branch_id: string; role_id: string; is_active: boolean }>;
   }) {
     const token = getAuthToken();
     if (!token) {
@@ -182,6 +205,7 @@ export default function UsersPage() {
           pan: payload.pan,
           aadhar: payload.aadhar,
           documents: payload.documents,
+          branch_access: payload.branch_access,
         }),
       });
 
@@ -353,6 +377,7 @@ export default function UsersPage() {
       setLoading(true);
       try {
         await loadMe();
+        await loadAccessOptions();
         await importLegacyUsersIfAny();
         await loadUsers();
       } catch (err) {
@@ -380,6 +405,7 @@ export default function UsersPage() {
     aadhar: string;
     documents: Array<{ name: string; type: string; size: number; lastModified: number }>;
     role: string;
+    branch_access?: Array<{ branch_id: string; role_id: string; is_active: boolean }>;
   }) {
     (async () => {
       const token = getAuthToken();
@@ -418,6 +444,7 @@ export default function UsersPage() {
             pan: payload.pan,
             aadhar: payload.aadhar,
             documents: payload.documents,
+            branch_access: payload.branch_access,
           }),
         });
 
@@ -454,6 +481,8 @@ export default function UsersPage() {
 
         <AddUserModal
           isOpen={isAddOpen}
+          branches={branches}
+          roles={roles}
           onClose={() => setIsAddOpen(false)}
           onCreate={(payload) => {
             handleCreateUser(payload);
@@ -464,6 +493,8 @@ export default function UsersPage() {
         <EditUserModal
           isOpen={!!editingUser}
           user={editingUser}
+          branches={branches}
+          roles={roles}
           saving={savingEdit}
           onClose={() => setEditingUser(null)}
           disableDeactivate={!!(editingUser && meId && editingUser.id === meId)}

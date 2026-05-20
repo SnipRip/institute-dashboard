@@ -92,6 +92,203 @@ insert into company_settings (id)
 values (1)
 on conflict (id) do nothing;
 
+-- Branches: one company can operate multiple centers/locations.
+create table if not exists branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  code text null,
+  address text null,
+  phone text null,
+  email text null,
+  is_active boolean not null default true,
+  is_default boolean not null default false,
+  business_modules jsonb null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists ux_branches_name_active
+  on branches (lower(name))
+  where is_active = true;
+
+insert into branches (name, code, is_default, business_modules)
+select 'Main Branch', 'MAIN', true, business_modules
+from company_settings
+where id = 1
+  and not exists (select 1 from branches);
+
+-- Keep only one default branch.
+create unique index if not exists ux_branches_single_default
+  on branches (is_default)
+  where is_default = true;
+
+-- Roles and granular permissions. Keep users.role for backward compatibility,
+-- but authorization should use role permissions as the app matures.
+create table if not exists roles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  description text null,
+  is_system boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists permissions (
+  code text primary key,
+  label text not null,
+  module text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists role_permissions (
+  role_id uuid not null references roles(id) on delete cascade,
+  permission_code text not null references permissions(code) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (role_id, permission_code)
+);
+
+create table if not exists user_branch_access (
+  user_id uuid not null references users(id) on delete cascade,
+  branch_id uuid not null references branches(id) on delete cascade,
+  role_id uuid not null references roles(id) on delete restrict,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, branch_id)
+);
+
+insert into roles (name, description, is_system)
+values
+  ('owner', 'Full access across all branches and settings', true),
+  ('admin', 'Manage branch operations, billing, users, and reports', true),
+  ('manager', 'Manage day-to-day branch operations', true),
+  ('accountant', 'Manage billing, receipts, accounting, purchases, and reports', true),
+  ('receptionist', 'Manage admissions and front-desk library operations', true),
+  ('teacher', 'Manage classes and learning materials', true),
+  ('library_staff', 'Manage library seats, books, lockers, and check-ins', true),
+  ('user', 'Basic read access', true)
+on conflict (name) do nothing;
+
+insert into permissions (code, label, module)
+values
+  ('dashboard.view', 'View dashboard', 'dashboard'),
+  ('students.view', 'View students', 'students'),
+  ('students.create', 'Create students', 'students'),
+  ('students.edit', 'Edit students', 'students'),
+  ('classes.view', 'View classes', 'classes'),
+  ('classes.manage', 'Manage classes and materials', 'classes'),
+  ('library.view', 'View library', 'library'),
+  ('library.manage', 'Manage library setup', 'library'),
+  ('library.checkin', 'Manage library check-ins', 'library'),
+  ('billing.view', 'View billing', 'billing'),
+  ('billing.create', 'Create invoices', 'billing'),
+  ('billing.edit', 'Edit invoices', 'billing'),
+  ('receipts.view', 'View receipts', 'receipts'),
+  ('receipts.create', 'Create receipts', 'receipts'),
+  ('accounting.view', 'View accounting', 'accounting'),
+  ('accounting.manage', 'Manage ledgers and expenses', 'accounting'),
+  ('purchases.view', 'View purchases/assets', 'purchases'),
+  ('purchases.manage', 'Manage purchases/assets', 'purchases'),
+  ('reports.view', 'View reports', 'reports'),
+  ('staff.view', 'View staff', 'staff'),
+  ('staff.manage', 'Manage staff', 'staff'),
+  ('users.view', 'View users', 'users'),
+  ('users.manage', 'Manage users and branch access', 'users'),
+  ('roles.manage', 'Manage roles and permissions', 'roles'),
+  ('branches.view', 'View branches', 'branches'),
+  ('branches.manage', 'Manage branches', 'branches'),
+  ('settings.manage', 'Manage company settings', 'settings')
+on conflict (code) do update set
+  label = excluded.label,
+  module = excluded.module;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+cross join permissions p
+where r.name in ('owner', 'admin')
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view', 'students.create', 'students.edit',
+  'classes.view', 'classes.manage', 'library.view', 'library.manage',
+  'library.checkin', 'billing.view', 'billing.create', 'receipts.view',
+  'receipts.create', 'reports.view', 'staff.view'
+)
+where r.name = 'manager'
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view', 'billing.view', 'billing.create',
+  'billing.edit', 'receipts.view', 'receipts.create', 'accounting.view',
+  'accounting.manage', 'purchases.view', 'purchases.manage', 'reports.view'
+)
+where r.name = 'accountant'
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view', 'students.create', 'students.edit',
+  'library.view', 'library.checkin', 'billing.view', 'billing.create',
+  'receipts.view', 'receipts.create'
+)
+where r.name = 'receptionist'
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view', 'classes.view', 'classes.manage'
+)
+where r.name = 'teacher'
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view', 'library.view', 'library.manage',
+  'library.checkin'
+)
+where r.name = 'library_staff'
+on conflict do nothing;
+
+insert into role_permissions (role_id, permission_code)
+select r.id, p.code
+from roles r
+join permissions p on p.code in (
+  'dashboard.view', 'students.view'
+)
+where r.name = 'user'
+on conflict do nothing;
+
+-- Sessions carry selected branch context after login.
+alter table sessions add column if not exists branch_id uuid null references branches(id) on delete set null;
+create index if not exists idx_sessions_branch_id on sessions (branch_id);
+
+-- Grant existing users access to the default branch using their legacy role.
+insert into user_branch_access (user_id, branch_id, role_id, is_active)
+select u.id, b.id, r.id, true
+from users u
+cross join lateral (
+  select id from branches order by is_default desc, created_at asc limit 1
+) b
+join roles r on r.name = case
+  when u.role in ('owner', 'admin', 'manager', 'accountant', 'receptionist', 'teacher', 'library_staff', 'user') then u.role
+  else 'user'
+end
+where u.deleted_at is null
+on conflict (user_id, branch_id) do nothing;
+
 -- Default credential for fresh setups
 -- Login: InDev
 -- Password: admin1234
@@ -960,3 +1157,62 @@ create index if not exists idx_library_book_issues_status on library_book_issues
 create unique index if not exists ux_library_book_issues_active_book
   on library_book_issues (book_id)
   where status = 'issued' and returned_date is null;
+
+-- Branch scope for operational records. Existing records are backfilled to
+-- the default branch so old installs keep working after upgrade.
+alter table account_master add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table students add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table classes add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_halls add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_seat_types add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_seats add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_shifts add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_locker_settings add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_book_sections add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table library_books add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table billing_invoices add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table receipts add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table accounting_vouchers add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table expenses add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table purchases add column if not exists branch_id uuid null references branches(id) on delete set null;
+alter table staff add column if not exists branch_id uuid null references branches(id) on delete set null;
+
+do $$
+declare
+  default_branch uuid;
+begin
+  select id into default_branch
+  from branches
+  order by is_default desc, created_at asc
+  limit 1;
+
+  if default_branch is not null then
+    update account_master set branch_id = default_branch where branch_id is null;
+    update students set branch_id = default_branch where branch_id is null;
+    update classes set branch_id = default_branch where branch_id is null;
+    update library_halls set branch_id = default_branch where branch_id is null;
+    update library_seat_types set branch_id = default_branch where branch_id is null;
+    update library_seats set branch_id = default_branch where branch_id is null;
+    update library_shifts set branch_id = default_branch where branch_id is null;
+    update library_locker_settings set branch_id = default_branch where branch_id is null;
+    update library_book_sections set branch_id = default_branch where branch_id is null;
+    update library_books set branch_id = default_branch where branch_id is null;
+    update billing_invoices set branch_id = default_branch where branch_id is null;
+    update receipts set branch_id = default_branch where branch_id is null;
+    update accounting_vouchers set branch_id = default_branch where branch_id is null;
+    update expenses set branch_id = default_branch where branch_id is null;
+    update purchases set branch_id = default_branch where branch_id is null;
+    update staff set branch_id = default_branch where branch_id is null;
+  end if;
+end $$;
+
+create index if not exists idx_students_branch_id on students (branch_id);
+create index if not exists idx_classes_branch_id on classes (branch_id);
+create index if not exists idx_library_seats_branch_id on library_seats (branch_id);
+create index if not exists idx_library_shifts_branch_id on library_shifts (branch_id);
+create index if not exists idx_billing_invoices_branch_id on billing_invoices (branch_id);
+create index if not exists idx_receipts_branch_id on receipts (branch_id);
+create index if not exists idx_accounting_vouchers_branch_id on accounting_vouchers (branch_id);
+create index if not exists idx_expenses_branch_id on expenses (branch_id);
+create index if not exists idx_purchases_branch_id on purchases (branch_id);
+create index if not exists idx_staff_branch_id on staff (branch_id);

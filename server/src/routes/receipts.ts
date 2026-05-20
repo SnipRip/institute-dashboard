@@ -42,9 +42,10 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
         r.created_at
       from receipts r
       join students st on st.id = r.student_id
+      where ($3::uuid is null or r.branch_id = $3::uuid)
       order by r.receipt_date desc, r.created_at desc
       limit $1 offset $2`,
-      [parsed.data.limit, parsed.data.offset],
+      [parsed.data.limit, parsed.data.offset, auth.user.branchId],
     );
 
     return reply.send(
@@ -86,8 +87,9 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
         `select id, full_name
          from students
          where id = $1
+           and ($2::uuid is null or branch_id = $2::uuid)
          limit 1`,
-        [studentId],
+        [studentId, auth.user.branchId],
       );
       const student = studentRes.rows[0] as { id: string; full_name: string } | undefined;
       if (!student) {
@@ -97,7 +99,7 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
 
       // Receipt no pattern: RCPT-YYYYMM-00001 (sequence is global)
       const insertRes = await client.query(
-        `insert into receipts (receipt_no, receipt_date, student_id, amount, payment_mode, reference, narration)
+        `insert into receipts (receipt_no, receipt_date, student_id, amount, payment_mode, reference, narration, branch_id)
          values (
            'RCPT-' || to_char($1::date, 'YYYYMM') || '-' || lpad(nextval('receipt_no_seq')::text, 5, '0'),
            $1::date,
@@ -105,10 +107,11 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
            $3,
            $4,
            $5,
-           $6
+           $6,
+           $7::uuid
          )
          returning id, receipt_no, receipt_date::text as receipt_date, student_id, amount::text as amount, payment_mode, reference, narration, created_at`,
-        [receiptDate, studentId, amount, paymentMode, reference ?? null, narration ?? null],
+        [receiptDate, studentId, amount, paymentMode, reference ?? null, narration ?? null, auth.user.branchId],
       );
 
       const receipt = insertRes.rows[0] as { id: string; receipt_no: string };
@@ -131,9 +134,10 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
             party_name,
             narration,
             source_type,
-            source_id
+            source_id,
+            branch_id
           )
-         values ('Receipt', $1, $2::date, $3::uuid, $4, $5, 'receipt', $6::uuid)
+         values ('Receipt', $1, $2::date, $3::uuid, $4, $5, 'receipt', $6::uuid, $7::uuid)
          on conflict (source_type, source_id)
          do update set
            voucher_no = excluded.voucher_no,
@@ -141,9 +145,10 @@ export async function registerReceiptRoutes(app: FastifyInstance) {
            party_student_id = excluded.party_student_id,
            party_name = excluded.party_name,
            narration = excluded.narration,
+           branch_id = excluded.branch_id,
            updated_at = now()
          returning id`,
-        [receipt.receipt_no, receiptDate, studentId, student.full_name, narration ?? null, receipt.id],
+        [receipt.receipt_no, receiptDate, studentId, student.full_name, narration ?? null, receipt.id, auth.user.branchId],
       );
 
       const voucherId = voucherRes.rows[0]?.id as string;
