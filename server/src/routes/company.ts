@@ -13,6 +13,34 @@ const DocumentSchema = z.object({
   uploaded_at: z.string().optional(),
 });
 
+const BusinessModulesSchema = z.object({
+  selfStudyLibrary: z.boolean().optional(),
+  coaching: z.boolean().optional(),
+  school: z.boolean().optional(),
+  books: z.boolean().optional(),
+  lockers: z.boolean().optional(),
+  billing: z.boolean().optional(),
+  accounting: z.boolean().optional(),
+  purchases: z.boolean().optional(),
+  reports: z.boolean().optional(),
+  staff: z.boolean().optional(),
+  users: z.boolean().optional(),
+});
+
+const DEFAULT_BUSINESS_MODULES = {
+  selfStudyLibrary: true,
+  coaching: true,
+  school: false,
+  books: true,
+  lockers: true,
+  billing: true,
+  accounting: true,
+  purchases: true,
+  reports: true,
+  staff: true,
+  users: true,
+};
+
 const UpdateCompanySchema = z.object({
   name: z.string().trim().min(1).max(200),
   address: z.string().optional().nullable(),
@@ -25,7 +53,13 @@ const UpdateCompanySchema = z.object({
   pan: z.string().optional().nullable(),
   logo_url: z.string().optional().nullable(),
   documents: z.array(DocumentSchema).optional().nullable(),
+  business_modules: BusinessModulesSchema.optional().nullable(),
 });
+
+function normalizeBusinessModules(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_BUSINESS_MODULES;
+  return { ...DEFAULT_BUSINESS_MODULES, ...(raw as Record<string, unknown>) };
+}
 
 function extFromMime(mime: string | undefined): string {
   const m = (mime || "").toLowerCase();
@@ -98,6 +132,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
          gst,
          pan,
          logo_url,
+         business_modules,
          documents,
          updated_at
        from company_settings
@@ -120,6 +155,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
         gst: "",
         pan: "",
         logo_url: null,
+        business_modules: DEFAULT_BUSINESS_MODULES,
         documents: null,
       });
     }
@@ -137,6 +173,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       gst: row.gst ?? "",
       pan: row.pan ?? "",
       logo_url: row.logo_url ?? null,
+      business_modules: normalizeBusinessModules(row.business_modules),
       documents: row.documents ?? null,
     });
   });
@@ -170,6 +207,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
          pan = $9,
          logo_url = $10,
          documents = $11::jsonb,
+         business_modules = $12::jsonb,
          updated_at = now()
        where id = 1
        returning
@@ -185,6 +223,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
          gst,
          pan,
          logo_url,
+         business_modules,
          documents`,
       [
         d.name,
@@ -198,6 +237,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
         d.pan ?? null,
         d.logo_url ?? null,
         d.documents ? JSON.stringify(d.documents) : null,
+        JSON.stringify(normalizeBusinessModules(d.business_modules)),
       ],
     );
 
@@ -215,6 +255,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       gst: row.gst ?? "",
       pan: row.pan ?? "",
       logo_url: row.logo_url ?? null,
+      business_modules: normalizeBusinessModules(row.business_modules),
       documents: row.documents ?? null,
     });
   });

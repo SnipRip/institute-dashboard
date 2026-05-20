@@ -56,10 +56,37 @@ create table if not exists company_settings (
   pan text null,
   logo_url text null,
   documents jsonb null,
+  business_modules jsonb not null default '{
+    "selfStudyLibrary": true,
+    "coaching": true,
+    "school": false,
+    "books": true,
+    "lockers": true,
+    "billing": true,
+    "accounting": true,
+    "purchases": true,
+    "reports": true,
+    "staff": true,
+    "users": true
+  }'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (id = 1)
 );
+
+alter table company_settings add column if not exists business_modules jsonb not null default '{
+  "selfStudyLibrary": true,
+  "coaching": true,
+  "school": false,
+  "books": true,
+  "lockers": true,
+  "billing": true,
+  "accounting": true,
+  "purchases": true,
+  "reports": true,
+  "staff": true,
+  "users": true
+}'::jsonb;
 
 insert into company_settings (id)
 values (1)
@@ -472,14 +499,97 @@ create index if not exists idx_accounting_voucher_lines_ledger_code_voucher_id o
 insert into accounting_ledgers (code, name, nature)
 values
   ('DEBTORS_CTRL', 'Sundry Debtors (Control)', 'asset'),
+  ('CREDITORS_CTRL', 'Sundry Creditors (Control)', 'liability'),
+  ('LOAN_PAYABLE', 'Loan Payable', 'liability'),
   ('CASH', 'Cash', 'asset'),
   ('BANK', 'Bank', 'asset'),
   ('UPI', 'UPI', 'asset'),
   ('CARD', 'Card', 'asset'),
+  ('FIXED_ASSETS', 'Fixed Assets', 'asset'),
   ('SALES', 'Sales', 'income'),
+  ('PURCHASES', 'Purchases', 'expense'),
+  ('INPUT_GST', 'Input GST (ITC)', 'asset'),
+  ('INPUT_CGST', 'Input CGST (ITC)', 'asset'),
+  ('INPUT_SGST', 'Input SGST (ITC)', 'asset'),
+  ('INPUT_IGST', 'Input IGST (ITC)', 'asset'),
   ('OUTPUT_GST', 'Output GST', 'liability'),
-  ('EXPENSE_MISC', 'Expenses (Misc)', 'expense')
+  ('OUTPUT_CGST', 'Output CGST', 'liability'),
+  ('OUTPUT_SGST', 'Output SGST', 'liability'),
+  ('OUTPUT_IGST', 'Output IGST', 'liability'),
+  ('TDS_PAYABLE', 'TDS Payable', 'liability'),
+  ('EXPENSE_MISC', 'Expenses (Misc)', 'expense'),
+  ('EXP_ELECTRICITY', 'Electricity Expense', 'expense'),
+  ('EXP_WIFI', 'WiFi/Internet Expense', 'expense'),
+  ('EXP_MAINTENANCE', 'Maintenance Expense', 'expense'),
+  ('EXP_SALARIES', 'Salaries & Wages', 'expense')
 on conflict (code) do nothing;
+
+-- Staff (employees/contractors) — can be linked to a login user or standalone
+create table if not exists staff (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid null references users(id) on delete set null,
+  display_name text not null,
+  designation text null,
+  phone text null,
+  email text null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id)
+);
+
+create index if not exists idx_staff_display_name on staff (display_name);
+
+-- Expense records with bill attachments (posts to accounting vouchers)
+create sequence if not exists expense_no_seq;
+
+create table if not exists expenses (
+  id uuid primary key default gen_random_uuid(),
+  expense_no text not null,
+  expense_date date not null,
+  payee_name text null,
+  amount numeric(12,2) not null check (amount > 0),
+  payment_mode text not null check (payment_mode in ('cash', 'bank', 'upi', 'card', 'other')),
+  ledger_code text not null references accounting_ledgers(code) on delete restrict,
+  reference text null,
+  narration text null,
+  documents jsonb null,
+  created_by uuid null references users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_expenses_expense_date on expenses (expense_date);
+create index if not exists idx_expenses_created_at on expenses (created_at);
+
+-- Purchases (asset purchases with bill attachments)
+create sequence if not exists purchase_no_seq;
+
+create table if not exists purchases (
+  id uuid primary key default gen_random_uuid(),
+  purchase_no text not null,
+  purchase_date date not null,
+  vendor_name text not null,
+  amount numeric(12,2) not null check (amount > 0),
+  payment_mode text not null,
+  liability_ledger_code text null,
+  reference text null,
+  narration text null,
+  documents jsonb null,
+  created_by uuid null references users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Support asset purchases bought on credit/loan.
+alter table purchases add column if not exists liability_ledger_code text null;
+alter table purchases drop constraint if exists purchases_payment_mode_check;
+alter table purchases
+  add constraint purchases_payment_mode_check
+  check (payment_mode in ('cash', 'bank', 'upi', 'card', 'other', 'credit'));
+
+create index if not exists idx_purchases_purchase_date on purchases (purchase_date);
+create index if not exists idx_purchases_created_at on purchases (created_at);
 
 -- Voucher numbering for manual vouchers (expenses/payments/journals later)
 create sequence if not exists accounting_voucher_no_seq;

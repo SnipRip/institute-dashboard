@@ -6,6 +6,7 @@ import Image from 'next/image';
 import TopNav from '@/components/TopNav';
 import { API_BASE_URL } from '@/lib/api';
 import { getAuthToken } from '@/lib/auth';
+import { DEFAULT_BUSINESS_MODULES, normalizeBusinessModules, type BusinessModules } from '@/lib/businessModules';
 import UniversalModal from '@/components/modals/UniversalModal';
 import Cropper, { type Area, type Point, type Size } from 'react-easy-crop';
 import styles from './company.module.css';
@@ -86,6 +87,7 @@ type Company = {
   gst?: string | null;
   pan?: string | null;
   logo_url?: string | null;
+  business_modules?: Partial<BusinessModules> | null;
   documents?: Array<{ name: string; url: string; uploaded_at?: string }> | null;
 };
 
@@ -102,6 +104,7 @@ const EMPTY_COMPANY: Company = {
   gst: '',
   pan: '',
   logo_url: null,
+  business_modules: DEFAULT_BUSINESS_MODULES,
   documents: null,
 };
 
@@ -149,7 +152,7 @@ function safeLoadLocal(): Company | null {
     const raw = localStorage.getItem(LOCAL_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Company>;
-    return { ...EMPTY_COMPANY, ...parsed };
+    return { ...EMPTY_COMPANY, ...parsed, business_modules: normalizeBusinessModules(parsed.business_modules) };
   } catch {
     return null;
   }
@@ -212,6 +215,22 @@ export default function CompanySettingsPage() {
     return getAuthToken();
   }, []);
 
+  const modules = normalizeBusinessModules(company.business_modules);
+
+  function setModule(key: keyof BusinessModules, value: boolean) {
+    setCompany((c) => {
+      const next = normalizeBusinessModules(c.business_modules);
+      next[key] = value;
+
+      if (!next.selfStudyLibrary) {
+        next.books = false;
+        next.lockers = false;
+      }
+
+      return { ...c, business_modules: next };
+    });
+  }
+
   useEffect(() => {
     (async () => {
       setError(null);
@@ -245,7 +264,7 @@ export default function CompanySettingsPage() {
           return;
         }
         const body = (await res.json()) as Company;
-        const next = { ...EMPTY_COMPANY, ...body };
+        const next = { ...EMPTY_COMPANY, ...body, business_modules: normalizeBusinessModules(body.business_modules) };
         setCompany(next);
         setInitialCompany(next);
         const prefs = safeLoadBillingPrefs();
@@ -303,6 +322,7 @@ export default function CompanySettingsPage() {
           gst: company.gst,
           pan: company.pan,
           logo_url: company.logo_url,
+          business_modules: normalizeBusinessModules(company.business_modules),
           documents: company.documents || null,
         }),
       });
@@ -768,6 +788,110 @@ export default function CompanySettingsPage() {
                         placeholder="Enter pincode"
                       />
                     </div>
+                  </div>
+
+                  <div className={styles.sectionTitle}>Business Modules</div>
+                  <div className={styles.help}>Choose what this institute actually runs. The dashboard and sidebar will only show matching modules.</div>
+
+                  <div className={styles.moduleGrid}>
+                    <label className={`${styles.moduleCard} ${modules.selfStudyLibrary ? styles.moduleCardActive : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={modules.selfStudyLibrary}
+                        onChange={(e) => setModule('selfStudyLibrary', e.target.checked)}
+                      />
+                      <span className={styles.moduleTitle}>Self-study library</span>
+                      <span className={styles.moduleHint}>Seats, shifts, admissions, check-ins</span>
+                    </label>
+
+                    <label className={`${styles.moduleCard} ${modules.coaching ? styles.moduleCardActive : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={modules.coaching}
+                        onChange={(e) => setModule('coaching', e.target.checked)}
+                      />
+                      <span className={styles.moduleTitle}>Coaching institute</span>
+                      <span className={styles.moduleHint}>Batches, subjects, materials, class fees</span>
+                    </label>
+
+                    <label className={`${styles.moduleCard} ${modules.school ? styles.moduleCardActive : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={modules.school}
+                        onChange={(e) => setModule('school', e.target.checked)}
+                      />
+                      <span className={styles.moduleTitle}>School</span>
+                      <span className={styles.moduleHint}>Keep student billing and admin, expand later</span>
+                    </label>
+                  </div>
+
+                  <div className={styles.moduleGridCompact}>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.books}
+                        disabled={!modules.selfStudyLibrary}
+                        onChange={(e) => setModule('books', e.target.checked)}
+                      />
+                      Books issue/return
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.lockers}
+                        disabled={!modules.selfStudyLibrary}
+                        onChange={(e) => setModule('lockers', e.target.checked)}
+                      />
+                      Lockers
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.billing}
+                        onChange={(e) => setModule('billing', e.target.checked)}
+                      />
+                      Billing & receipts
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.accounting}
+                        onChange={(e) => setModule('accounting', e.target.checked)}
+                      />
+                      Accounting
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.purchases}
+                        onChange={(e) => setModule('purchases', e.target.checked)}
+                      />
+                      Purchases/assets
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.reports}
+                        onChange={(e) => setModule('reports', e.target.checked)}
+                      />
+                      Reports
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.staff}
+                        onChange={(e) => setModule('staff', e.target.checked)}
+                      />
+                      Staff
+                    </label>
+                    <label className={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={modules.users}
+                        onChange={(e) => setModule('users', e.target.checked)}
+                      />
+                      User admin
+                    </label>
                   </div>
 
                   <div className={styles.sectionTitle}>Tax Details</div>

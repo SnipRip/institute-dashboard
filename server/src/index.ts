@@ -11,11 +11,13 @@ import { registerAccountingRoutes } from "./routes/accounting.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerClassRoutes } from "./routes/classes.js";
 import { registerCompanyRoutes } from "./routes/company.js";
+import { registerPurchaseRoutes } from "./routes/purchases.js";
 import { registerLibraryRoutes } from "./routes/library.js";
 import { registerReportRoutes } from "./routes/reports.js";
 import { registerReceiptRoutes } from "./routes/receipts.js";
 import { registerStudentRoutes } from "./routes/students.js";
 import { registerUserRoutes } from "./routes/users.js";
+import { registerStaffRoutes } from "./routes/staff.js";
 
 const env = getEnv();
 
@@ -47,10 +49,12 @@ await registerAccountingRoutes(app);
 await registerBillingRoutes(app);
 await registerClassRoutes(app);
 await registerCompanyRoutes(app);
+await registerPurchaseRoutes(app);
 await registerLibraryRoutes(app);
 await registerReportRoutes(app);
 await registerReceiptRoutes(app);
 await registerStudentRoutes(app);
 await registerUserRoutes(app);
+await registerStaffRoutes(app);
 
 app.listen({ port: env.PORT, host: "0.0.0.0" });

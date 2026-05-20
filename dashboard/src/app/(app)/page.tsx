@@ -9,6 +9,7 @@ import SeatStatus from "@/components/dashboard/SeatStatus";
 import LockerStatus from "@/components/dashboard/LockerStatus";
 import { API_BASE_URL } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
+import { DEFAULT_BUSINESS_MODULES, normalizeBusinessModules, type BusinessModules } from "@/lib/businessModules";
 
 type Seat = {
   id: string;
@@ -77,6 +78,7 @@ export default function Dashboard() {
   const [lockerCounts, setLockerCounts] = useState<{ occupied: number; total: number }>({ occupied: 0, total: 0 });
   const [recentTransactions, setRecentTransactions] = useState<RecentTransactionRow[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState<boolean>(true);
+  const [modules, setModules] = useState<BusinessModules>(DEFAULT_BUSINESS_MODULES);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,13 +100,19 @@ export default function Dashboard() {
           ? `${API_BASE_URL}/library/seats?shift_id=${encodeURIComponent(shiftId)}`
           : `${API_BASE_URL}/library/seats`;
 
-        const [seatsRes, classesRes, lockersRes, invoicesRes, receiptsRes] = await Promise.all([
+        const [companyRes, seatsRes, classesRes, lockersRes, invoicesRes, receiptsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/company`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(seatsUrl, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE_URL}/classes`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE_URL}/library/lockers`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE_URL}/billing/invoices?limit=5`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE_URL}/receipts?limit=5`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
+
+        if (companyRes.ok) {
+          const body = await companyRes.json().catch(() => null);
+          if (!cancelled) setModules(normalizeBusinessModules(body?.business_modules));
+        }
 
         if (seatsRes.ok) {
           const seats = (await seatsRes.json()) as Seat[];
@@ -190,7 +198,7 @@ export default function Dashboard() {
             <div className={`${styles.promoCard} ${styles.bgTan}`}>
               <div className={styles.promoText}>
                 <h3>New Admission</h3>
-                <p>Register a new student for Library or Coaching</p>
+                <p>Register a new student for the enabled institute modules</p>
                 <button
                   className={styles.linkButton}
                   onClick={() => setIsStudentModalOpen(true)}
@@ -201,16 +209,18 @@ export default function Dashboard() {
               <div className={styles.promoImage}>📝</div>
             </div>
 
+            {modules.billing ? (
             <div className={`${styles.promoCard} ${styles.bgGreen}`}>
               <div className={styles.promoText}>
                 <h3>Create Invoice</h3>
                 <p>Generate fee receipt or sales invoice quickly</p>
-                <button className={`${styles.linkButton} ${styles.textGreen}`}>
+                <button className={`${styles.linkButton} ${styles.textGreen}`} onClick={() => { window.location.href = "/billing/create"; }}>
                   + Create New &rarr;
                 </button>
               </div>
               <div className={styles.promoImage}>🧾</div>
             </div>
+            ) : null}
           </div>
 
           {/* Business Overview Header */}
@@ -221,6 +231,7 @@ export default function Dashboard() {
 
           {/* Stats Cards */}
           <div className={styles.statsGrid}>
+            {modules.selfStudyLibrary ? (
             <div className={`${styles.statWrapper} ${styles.bgBlueLight}`}>
               <span className={styles.statLabel}>📚 Library Seats</span>
               <div className={styles.statValue}>
@@ -230,6 +241,8 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
+            ) : null}
+            {modules.lockers ? (
             <div className={`${styles.statWrapper} ${styles.bgBlueLight}`}>
               <span className={styles.statLabel}>🔒 Lockers</span>
               <div className={styles.statValue}>
@@ -239,6 +252,8 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
+            ) : null}
+            {(modules.coaching || modules.school) ? (
             <div className={`${styles.statWrapper} ${styles.bgBlueLight}`}>
               <span className={styles.statLabel}>🎓 Coaching Batches</span>
               <div className={styles.statValue}>
@@ -246,14 +261,19 @@ export default function Dashboard() {
                 <span style={{ fontSize: "1rem", color: "#64748b" }}>Active</span>
               </div>
             </div>
+            ) : null}
+            {modules.billing ? (
             <div className={`${styles.statWrapper} ${styles.bgGreenLight}`}>
               <span className={styles.statLabel}>↓ Today&apos;s Collection</span>
               <div className={styles.statValue}>—</div>
             </div>
+            ) : null}
+            {modules.billing ? (
             <div className={`${styles.statWrapper} ${styles.bgRedLight}`}>
               <span className={styles.statLabel}>⚠️ Pending Dues</span>
               <div className={styles.statValue}>—</div>
             </div>
+            ) : null}
           </div>
 
           {/* Content Details Grid */}
@@ -305,10 +325,10 @@ export default function Dashboard() {
 
             <div className={styles.sideWidgets}>
               {/* Seat Status Widget */}
-              <SeatStatus />
+              {modules.selfStudyLibrary ? <SeatStatus /> : null}
 
               {/* Locker Status Widget */}
-              <LockerStatus />
+              {modules.lockers ? <LockerStatus /> : null}
             </div>
           </div>
         </div>
